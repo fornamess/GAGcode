@@ -1,4 +1,3 @@
-
 repeat
     wait()
 until game:IsLoaded()
@@ -2767,3 +2766,83 @@ spawn(function()
         end
     end)
 end)
+
+-- === Better/Faster Farming Functions ===
+
+-- FastFarm: Rapidly plants seeds in all available locations
+function FastFarm()
+    local plr = game.Players.LocalPlayer
+    local plantLocations = getplace().Important.Plant_Locations:GetChildren()
+    local planted = 0
+    for _, loc in ipairs(plantLocations) do
+        if #getplace().Important.Plants_Physical:GetChildren() >= getgenv().Config["Limit Tree"] then
+            break
+        end
+        local seed = haveseed()
+        if seed then
+            seed.Parent = plr.Character
+            local arguments = {
+                [1] = loc.Position,
+                [2] = seed:GetAttribute(invobf["ItemName"])
+            }
+            getgenv().ContentSet("FastFarm: " .. seed:GetAttribute(invobf["ItemName"]))
+            game.ReplicatedStorage.GameEvents.Plant_RE:FireServer(unpack(arguments))
+            planted = planted + 1
+        end
+    end
+    return planted
+end
+
+-- SmartFarm: Prioritizes best seeds, auto-collects, and auto-sells
+function SmartFarm()
+    local plr = game.Players.LocalPlayer
+    local sheckles = plr.leaderstats.Sheckles
+    local plantsFolder = getplace().Important.Plants_Physical
+    local plantLocations = getplace().Important.Plant_Locations:GetChildren()
+    -- Auto-sell if inventory is near full
+    if #plr.Backpack:GetChildren() >= 190 then
+        plr.Character.HumanoidRootPart.CFrame = CFrame.new(86.5900116, 2.99999976, 0.426799476)
+        task.wait(0.5)
+        getgenv().ContentSet("SmartFarm: Sell Item")
+        game:GetService("ReplicatedStorage"):WaitForChild("GameEvents"):WaitForChild("Sell_Inventory"):FireServer()
+        task.wait(1)
+    end
+    -- Auto-collect fruits
+    local a = require(game:GetService("ReplicatedStorage").Modules.Remotes)
+    for _, v in plantsFolder:GetChildren() do
+        if v:FindFirstChild("Fruits") then
+            for _, fruit in v.Fruits:GetChildren() do
+                getgenv().ContentSet("SmartFarm: Collect Fruits: " .. fruit.Name)
+                a.Crops.Collect.send({fruit})
+            end
+        end
+    end
+    -- Plant best seeds
+    for _, loc in ipairs(plantLocations) do
+        if #plantsFolder:GetChildren() >= getgenv().Config["Limit Tree"] then
+            break
+        end
+        local bestSeed = nil
+        local bestRarity = -1
+        for _, item in ipairs(plr.Backpack:GetChildren()) do
+            if item:GetAttribute(invobf["ITEM_TYPE"]) == Itemobf["Seed"] then
+                local seedName = item:GetAttribute(invobf["ItemName"])
+                local dataseed = require(game:GetService("ReplicatedStorage").Data.SeedData)
+                local rarity = dataseed[seedName] and dataseed[seedName].SeedRarity or 0
+                if rarity > bestRarity then
+                    bestSeed = item
+                    bestRarity = rarity
+                end
+            end
+        end
+        if bestSeed then
+            bestSeed.Parent = plr.Character
+            local arguments = {
+                [1] = loc.Position,
+                [2] = bestSeed:GetAttribute(invobf["ItemName"])
+            }
+            getgenv().ContentSet("SmartFarm: Plant " .. bestSeed:GetAttribute(invobf["ItemName"]))
+            game.ReplicatedStorage.GameEvents.Plant_RE:FireServer(unpack(arguments))
+        end
+    end
+end
