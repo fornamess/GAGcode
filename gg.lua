@@ -1,4 +1,3 @@
-
 repeat
     wait()
 until game:IsLoaded()
@@ -2767,3 +2766,126 @@ spawn(function()
         end
     end)
 end)
+
+-- === Better & Fast Farm Functions ===
+
+-- Fast plant all available seeds in open slots, prioritizing rare/high-value seeds
+function fastPlantAllSeeds()
+    local place = getplace()
+    if not place then return end
+    local dataseed = require(game:GetService("ReplicatedStorage").Data.SeedData)
+    local inv = game.Players.LocalPlayer.Backpack:GetChildren()
+    local char = game.Players.LocalPlayer.Character:GetChildren()
+    local seeds = {}
+    for _, v in ipairs(inv) do
+        if v:GetAttribute(invobf["ITEM_TYPE"]) == Itemobf["Seed"] then
+            table.insert(seeds, v)
+        end
+    end
+    for _, v in ipairs(char) do
+        if v:GetAttribute(invobf["ITEM_TYPE"]) == Itemobf["Seed"] then
+            table.insert(seeds, v)
+        end
+    end
+    -- Sort seeds by rarity/price (descending)
+    table.sort(seeds, function(a, b)
+        local sa = dataseed[a:GetAttribute(invobf["ItemName"])]
+        local sb = dataseed[b:GetAttribute(invobf["ItemName"])]
+        return (sa and sa.Price or 0) > (sb and sb.Price or 0)
+    end)
+    for _, loc in ipairs(place.Important.Plant_Locations:GetChildren()) do
+        if #place.Important.Plants_Physical:GetChildren() < getgenv().Config["Limit Tree"] then
+            local seed = table.remove(seeds, 1)
+            if not seed then break end
+            seed.Parent = game.Players.LocalPlayer.Character
+            local arguments = {
+                [1] = loc.Position,
+                [2] = seed:GetAttribute(invobf["ItemName"])
+            }
+            game.ReplicatedStorage.GameEvents.Plant_RE:FireServer(unpack(arguments))
+        end
+    end
+end
+
+-- Auto-harvest all mature plants and replant best available seeds
+function autoHarvestAndReplant()
+    local place = getplace()
+    if not place then return end
+    -- Harvest mature plants
+    for _, plant in ipairs(place.Important.Plants_Physical:GetChildren()) do
+        if plant:FindFirstChild("Fruits") then
+            for _, fruit in ipairs(plant.Fruits:GetChildren()) do
+                if fruit:FindFirstChild("ProximityPrompt") then
+                    fireproximityprompt(fruit.ProximityPrompt)
+                end
+            end
+        end
+    end
+    -- Replant
+    fastPlantAllSeeds()
+end
+
+-- Quick sell all fruits/plants in inventory
+function quickSellAllFruits()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    getgenv().ContentSet("Sell Item")
+    ReplicatedStorage:WaitForChild("GameEvents"):WaitForChild("Sell_Inventory"):FireServer()
+end
+
+-- Find the nearest available planting spot to the player
+function findNearestPlantingSpot()
+    local place = getplace()
+    if not place then return end
+    local plr = game.Players.LocalPlayer
+    local minDist, nearest = math.huge, nil
+    for _, loc in ipairs(place.Important.Plant_Locations:GetChildren()) do
+        local dist = (plr.Character.HumanoidRootPart.Position - loc.Position).Magnitude
+        if dist < minDist then
+            minDist = dist
+            nearest = loc
+        end
+    end
+    return nearest
+end
+
+-- Auto-equip best farming pets (highest level/rarity)
+function autoEquipBestFarmingPets()
+    local v2 = game:GetService("ReplicatedStorage")
+    local PetRegistry = require(v2.Data.PetRegistry)
+    local DataService = require(v2.Modules.DataService)
+    local playerdata = DataService:GetData()
+    local equippedPets = playerdata.PetsData.EquippedPets or {}
+    local inventoryData = playerdata.PetsData.PetInventory.Data or {}
+    local pets = {}
+    for petId, petData in pairs(inventoryData) do
+        table.insert(pets, {
+            id = petId,
+            type = petData.PetType,
+            level = petData.PetData.Level or 0,
+            rarity = PetRegistry.PetList[petData.PetType] and PetRegistry.PetList[petData.PetType].Rarity or 0
+        })
+    end
+    table.sort(pets, function(a, b)
+        if a.rarity == b.rarity then
+            return a.level > b.level
+        end
+        return a.rarity > b.rarity
+    end)
+    local maxEquip = playerdata.PetsData.PurchasedEquipSlots or 3
+    for i = 1, math.min(#pets, maxEquip) do
+        local pet = pets[i]
+        for _, item in ipairs(game.Players.LocalPlayer.Backpack:GetChildren()) do
+            if item:GetAttribute("PET_UUID") == pet.id then
+                local args = {"EquipPet", pet.id, getpos()}
+                game:GetService("ReplicatedStorage").GameEvents.PetsService:FireServer(unpack(args))
+            end
+        end
+    end
+end
+
+-- Usage examples (uncomment to use):
+-- fastPlantAllSeeds()
+-- autoHarvestAndReplant()
+-- quickSellAllFruits()
+-- local spot = findNearestPlantingSpot()
+-- autoEquipBestFarmingPets()
